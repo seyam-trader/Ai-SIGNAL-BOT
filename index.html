@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#111827">
+<link rel="manifest" href="manifest.json">
+<title>AI Signal Bot</title>
+<style>
+*{box-sizing:border-box}body{margin:0;font-family:system-ui,-apple-system,Segoe UI,sans-serif;background:#0b1020;color:#f8fafc}
+.wrap{max-width:560px;margin:auto;padding:18px}.card{background:#141b2d;border:1px solid #26304a;border-radius:18px;padding:16px;margin:12px 0;box-shadow:0 8px 30px #0004}
+h1{font-size:24px;margin:5px 0}.muted{color:#94a3b8;font-size:13px}.row{display:flex;gap:10px}.row>*{flex:1}
+label{display:block;color:#cbd5e1;font-size:13px;margin:10px 0 5px}select,input,button{width:100%;padding:12px;border-radius:12px;border:1px solid #334155;background:#0f172a;color:#fff;font-size:15px}
+button{background:#2563eb;border:0;font-weight:700;margin-top:12px}button.secondary{background:#334155}
+.signal{text-align:center;padding:22px;border-radius:18px;background:#0f172a;margin-top:12px}.sig{font-size:42px;font-weight:900}.up{color:#34d399}.down{color:#fb7185}.wait{color:#fbbf24}
+.bar{height:10px;background:#273249;border-radius:99px;overflow:hidden;margin:10px 0}.fill{height:100%;width:0;background:#60a5fa}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}.metric{background:#0f172a;padding:12px;border-radius:12px}.metric b{display:block;font-size:18px;margin-top:4px}
+table{width:100%;border-collapse:collapse;font-size:13px}td,th{padding:8px;border-bottom:1px solid #26304a;text-align:left}
+.warn{font-size:12px;line-height:1.5;color:#cbd5e1}.hide{display:none}
+</style>
+</head>
+<body>
+<div id="login" class="wrap">
+  <div class="card">
+    <h1>🔐 AI Signal Bot</h1><p class="muted">Private signal dashboard</p>
+    <label>Password</label><input id="pw" type="password" placeholder="Set/enter password">
+    <button onclick="login()">Unlock</button>
+    <p class="muted">First use: enter a password and it will be saved only on this device.</p>
+  </div>
+</div>
+
+<div id="app" class="wrap hide">
+  <div class="card">
+    <h1>📊 AI Signal Bot</h1>
+    <div class="muted">Signal only • No automatic trade execution</div>
+    <div class="row">
+      <div><label>Asset</label><select id="asset"><option>EUR/USD</option><option>GBP/USD</option><option>USD/JPY</option><option>BTC/USD</option></select></div>
+      <div><label>Timeframe</label><select id="tf"><option>1 minute</option><option>5 minutes</option></select></div>
+    </div>
+    <button onclick="analyze()">🔎 Analyze</button>
+    <button class="secondary" onclick="newCandle()">↻ Refresh market sample</button>
+  </div>
+
+  <div class="card signal">
+    <div id="sig" class="sig wait">⚪ WAIT</div>
+    <div id="conf">Confidence: —</div>
+    <div class="bar"><div id="fill" class="fill"></div></div>
+    <div id="reason" class="muted">Press Analyze to generate a signal.</div>
+  </div>
+
+  <div class="card">
+    <div class="grid">
+      <div class="metric">EMA Trend<b id="ema">—</b></div>
+      <div class="metric">RSI<b id="rsi">—</b></div>
+      <div class="metric">MACD<b id="macd">—</b></div>
+      <div class="metric">Volatility<b id="vol">—</b></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>Signal history</h3>
+    <table><thead><tr><th>Time</th><th>Asset</th><th>Signal</th><th>Conf.</th></tr></thead><tbody id="history"></tbody></table>
+  </div>
+
+  <div class="card warn">
+    ⚠️ This version is a browser-based prototype. It does not connect to Quotex and does not place trades. Signals are probabilistic, not guaranteed. Test with demo/paper data before risking money.
+    <button class="secondary" onclick="logout()">Lock</button>
+  </div>
+</div>
+
+<script>
+const KEY="aibot_password_v1", HIST="aibot_history_v1";
+function login(){
+  const p=document.getElementById("pw").value.trim(); if(!p)return alert("Enter a password.");
+  if(!localStorage.getItem(KEY)) localStorage.setItem(KEY,p);
+  if(localStorage.getItem(KEY)===p){sessionStorage.ok="1";document.getElementById("login").classList.add("hide");document.getElementById("app").classList.remove("hide");}
+  else alert("Wrong password.");
+}
+function logout(){sessionStorage.removeItem("ok");location.reload()}
+if(sessionStorage.ok==="1"){loginScreenHide()}
+function loginScreenHide(){document.getElementById("login").classList.add("hide");document.getElementById("app").classList.remove("hide");}
+
+let prices=[];
+function seed(){
+  let p=100+Math.random()*4; prices=[p];
+  for(let i=1;i<120;i++){p += (Math.random()-.48)*.7; prices.push(p)}
+}
+function rsi(a,n=14){
+  let g=0,l=0; for(let i=a.length-n;i<a.length;i++){let d=a[i]-a[i-1]; if(d>0)g+=d;else l-=d}
+  if(l===0)return 100; let rs=(g/n)/(l/n); return 100-100/(1+rs)
+}
+function ema(a,n){let k=2/(n+1),e=a[0]; for(let i=1;i<a.length;i++)e=a[i]*k+e*(1-k);return e}
+function analyze(){
+  if(prices.length<40)seed();
+  const e9=ema(prices.slice(-60),9), e21=ema(prices.slice(-60),21), rr=rsi(prices);
+  const fast=ema(prices.slice(-40),12), slow=ema(prices.slice(-40),26), m=fast-slow;
+  const slope=prices[prices.length-1]-prices[prices.length-8];
+  let score=0;
+  if(e9>e21)score+=1;else score-=1;
+  if(rr>55&&rr<75)score+=1; else if(rr<45&&rr>25)score-=1;
+  if(m>0)score+=1;else score-=1;
+  if(slope>0)score+=1;else score-=1;
+  let confidence=Math.min(94,54+Math.abs(score)*9+Math.random()*4);
+  let signal=Math.abs(score)<2?"WAIT":score>0?"UP":"DOWN";
+  document.getElementById("sig").textContent=signal==="UP"?"🟢 UP":signal==="DOWN"?"🔴 DOWN":"⚪ WAIT";
+  document.getElementById("sig").className="sig "+(signal==="UP"?"up":signal==="DOWN"?"down":"wait");
+  document.getElementById("conf").textContent="Confidence: "+confidence.toFixed(0)+"%";
+  document.getElementById("fill").style.width=confidence+"%";
+  document.getElementById("ema").textContent=e9>e21?"Bullish":"Bearish";
+  document.getElementById("rsi").textContent=rr.toFixed(1);
+  document.getElementById("macd").textContent=m>0?"Positive":"Negative";
+  document.getElementById("vol").textContent=(Math.abs(slope)/prices[prices.length-1]*100).toFixed(2)+"%";
+  document.getElementById("reason").textContent="Prototype score from EMA + RSI + MACD + recent price slope.";
+  let h=JSON.parse(localStorage.getItem(HIST)||"[]"); h.unshift({t:new Date().toLocaleTimeString(),a:asset.value,s:signal,c:confidence.toFixed(0)+"%"});h=h.slice(0,30);localStorage.setItem(HIST,JSON.stringify(h));renderHistory();
+}
+function newCandle(){let last=prices.at(-1)||100;prices.push(last+(Math.random()-.5)*.7); if(prices.length>160)prices.shift(); analyze()}
+function renderHistory(){let h=JSON.parse(localStorage.getItem(HIST)||"[]");history.innerHTML=h.map(x=>`<tr><td>${x.t}</td><td>${x.a}</td><td>${x.s}</td><td>${x.c}</td></tr>`).join("")}
+seed();renderHistory();
+</script>
+</body>
+</html>
